@@ -1,36 +1,79 @@
-# CSYE 6225 - Assignment 5
-# YOUR WORK: Complete this file.
-#
-# Requirements:
-#
-# 1. aws_security_group "bastion_sg" (used by the public/bastion host):
-#    Inbound:
-#      - SSH (22) from 0.0.0.0/0
-#      - HTTP (80) from 0.0.0.0/0
-#    Outbound:
-#      - Allow SSH (22) and HTTP (80) to the private subnet's CIDR block
-#        (172.20.2.0/24).
-#      - Do NOT reference aws_security_group.private_sg here. Since
-#        private_sg's inbound rule (below) already references bastion_sg,
-#        referencing private_sg back from here would create a circular
-#        dependency between the two security groups - Terraform needs
-#        each one to exist before it can create the other, and
-#        `terraform apply` will fail with a cycle error. Using the
-#        subnet CIDR for this one direction avoids the cycle.
-#
-# 2. aws_security_group "private_sg" (used by the private host):
-#    Inbound:
-#      - SSH (22) from the bastion's Security Group only
-#        (reference aws_security_group.bastion_sg, not a CIDR block)
-#      - HTTP (80) from the bastion's Security Group only
-#    Outbound:
-#      - Think carefully about whether this instance ever initiates a
-#        connection anywhere. If it doesn't need to, it doesn't need an
-#        egress rule at all - Security Groups are stateful, so replies
-#        to inbound connections don't require a matching egress rule.
-#
-# Both security groups must be attached to your VPC (aws_vpc.main).
-#
-# Resource names compute.tf and nacls.tf expect from this file:
-#   aws_security_group.bastion_sg
-#   aws_security_group.private_sg
+
+# 1. Security Group for Bastion EC2
+resource "aws_security_group" "bastion_sg" {
+  name        = "assignment-05-bastion-sg"
+  description = "Security group for public bastion host"
+  vpc_id      = aws_vpc.main.id
+
+  # Allow SSH from the Internet
+  ingress {
+    description = "SSH from Internet"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow HTTP from the Internet
+  ingress {
+    description = "HTTP from Internet"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow SSH to private subnet
+  egress {
+    description = "SSH to private subnet"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["172.20.2.0/24"]
+  }
+
+  # Allow HTTP to private subnet
+  egress {
+    description = "HTTP to private subnet"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["172.20.2.0/24"]
+  }
+
+  tags = {
+    Name = "assignment-05-bastion-sg"
+  }
+}
+
+# 2. Security Group for Private EC2
+resource "aws_security_group" "private_sg" {
+  name        = "assignment-05-private-sg"
+  description = "Security group for private host"
+  vpc_id      = aws_vpc.main.id
+
+  # Allow SSH only from Bastion
+  ingress {
+    description     = "SSH from Bastion"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
+  }
+
+  # Allow HTTP only from Bastion
+  ingress {
+    description     = "HTTP from Bastion"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
+  }
+
+  # No outbound rules: private host cannot initiate connections
+
+  tags = {
+    Name = "assignment-05-private-sg"
+  }
+}
+
